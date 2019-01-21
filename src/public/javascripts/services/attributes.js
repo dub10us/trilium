@@ -13,13 +13,25 @@ const $savedIndicator = $("#saved-indicator");
 
 let attributePromise;
 
-async function refreshAttributes() {
+function invalidateAttributes() {
+    attributePromise = null;
+}
+
+function reloadAttributes() {
     attributePromise = server.get('notes/' + noteDetailService.getCurrentNoteId() + '/attributes');
+}
+
+async function refreshAttributes() {
+    reloadAttributes();
 
     await showAttributes();
 }
 
 async function getAttributes() {
+    if (!attributePromise) {
+        reloadAttributes();
+    }
+
     return await attributePromise;
 }
 
@@ -73,8 +85,11 @@ async function showAttributes() {
         $promotedAttributesContainer.empty().append($tbody);
     }
     else if (note.type !== 'relation-map') {
-        if (attributes.length > 0) {
-            for (const attribute of attributes) {
+        // display only "own" notes
+        const ownedAttributes = attributes.filter(attr => attr.noteId === note.noteId);
+
+        if (ownedAttributes.length > 0) {
+            for (const attribute of ownedAttributes) {
                 if (attribute.type === 'label') {
                     $attributeListInner.append(utils.formatLabel(attribute) + " ");
                 }
@@ -120,7 +135,9 @@ async function createPromotedAttributeRow(definitionAttr, valueAttr) {
     const $inputCell = $("<td>").append($("<div>").addClass("input-group").append($input));
 
     const $actionCell = $("<td>");
-    const $multiplicityCell = $("<td>").addClass("multiplicity");
+    const $multiplicityCell = $("<td>")
+        .addClass("multiplicity")
+        .attr("nowrap", true);
 
     $tr
         .append($labelCell)
@@ -143,7 +160,7 @@ async function createPromotedAttributeRow(definitionAttr, valueAttr) {
                 $input.autocomplete({
                     appendTo: document.querySelector('body'),
                     hint: false,
-                    autoselect: true,
+                    autoselect: false,
                     openOnFocus: true,
                     minLength: 0,
                     tabAutocomplete: false
@@ -286,5 +303,6 @@ async function promotedAttributeChanged(event) {
 export default {
     getAttributes,
     showAttributes,
-    refreshAttributes
+    refreshAttributes,
+    invalidateAttributes
 }

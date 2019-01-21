@@ -17,6 +17,7 @@ import noteDetailRender from './note_detail_render.js';
 import noteDetailRelationMap from './note_detail_relation_map.js';
 import bundleService from "./bundle.js";
 import attributeService from "./attributes.js";
+import utils from "./utils.js";
 
 const $noteTitle = $("#note-title");
 
@@ -35,6 +36,8 @@ let currentNote = null;
 let noteChangeDisabled = false;
 
 let isNoteChanged = false;
+
+let detailLoadedListeners = [];
 
 const components = {
     'code': noteDetailCode,
@@ -108,6 +111,10 @@ function onNoteChange(func) {
 async function saveNote() {
     const note = getCurrentNote();
 
+    if (note.isProtected && !protectedSessionHolder.isProtectedSessionAvailable()) {
+        return;
+    }
+
     note.title = $noteTitle.val();
     note.content = getCurrentNoteContent(note);
 
@@ -124,6 +131,9 @@ async function saveNote() {
     }
 
     $savedIndicator.fadeIn();
+
+    // run async
+    bundleService.executeRelationBundles(getCurrentNote(), 'runOnNoteChange');
 }
 
 async function saveNoteIfChanged() {
@@ -138,14 +148,9 @@ async function saveNoteIfChanged() {
 function setNoteBackgroundIfProtected(note) {
     $noteDetailWrapper.toggleClass("protected", note.isProtected);
     $protectButton.toggleClass("active", note.isProtected);
+    $protectButton.prop("disabled", note.isProtected);
     $unprotectButton.toggleClass("active", !note.isProtected);
-    $unprotectButton.prop("disabled", !protectedSessionHolder.isProtectedSessionAvailable());
-}
-
-let isNewNoteCreated = false;
-
-function newNoteCreated() {
-    isNewNoteCreated = true;
+    $unprotectButton.prop("disabled", !note.isProtected || !protectedSessionHolder.isProtectedSessionAvailable());
 }
 
 async function handleProtectedSession() {
@@ -177,13 +182,13 @@ async function loadNoteDetail(noteId) {
     // only now that we're in sync with tree active node we will switch currentNote
     currentNote = loadedNote;
 
-    // needs to happend after loading the note itself because it references current noteId
-    attributeService.refreshAttributes();
-
-    if (isNewNoteCreated) {
-        isNewNoteCreated = false;
-
-        $noteTitle.focus().select();
+    if (utils.isDesktop()) {
+        // needs to happen after loading the note itself because it references current noteId
+        attributeService.refreshAttributes();
+    }
+    else {
+        // mobile usually doesn't need attributes so we just invalidate
+        attributeService.invalidateAttributes();
     }
 
     $noteIdDisplay.html(noteId);
@@ -197,8 +202,10 @@ async function loadNoteDetail(noteId) {
     try {
         $noteTitle.val(currentNote.title);
 
-        noteTypeService.setNoteType(currentNote.type);
-        noteTypeService.setNoteMime(currentNote.mime);
+        if (utils.isDesktop()) {
+            noteTypeService.setNoteType(currentNote.type);
+            noteTypeService.setNoteMime(currentNote.mime);
+        }
 
         for (const componentType in components) {
             if (componentType !== currentNote.type) {
@@ -214,6 +221,8 @@ async function loadNoteDetail(noteId) {
             return;
         }
 
+        $noteTitle.removeAttr("readonly"); // this can be set by protected session service
+
         await getComponent(currentNote.type).show();
     }
     finally {
@@ -223,15 +232,19 @@ async function loadNoteDetail(noteId) {
     treeService.setBranchBackgroundBasedOnProtectedStatus(noteId);
 
     // after loading new note make sure editor is scrolled to the top
-    $noteDetailWrapper.scrollTop(0);
+    getComponent(currentNote.type).scrollToTop();
+
+    fireDetailLoaded();
 
     $scriptArea.empty();
 
     await bundleService.executeRelationBundles(getCurrentNote(), 'runOnNoteView');
 
-    await attributeService.showAttributes();
+    if (utils.isDesktop()) {
+        await attributeService.showAttributes();
 
-    await showChildrenOverview();
+        await showChildrenOverview();
+    }
 }
 
 async function showChildrenOverview() {
@@ -274,6 +287,34 @@ function focusOnTitle() {
     $noteTitle.focus();
 }
 
+function focusAndSelectTitle() {
+    $noteTitle.focus().select();
+}
+
+/**
+ * Since detail loading may take some time and user might just browse through the notes using UP-DOWN keys,
+ * we intentionally decouple activation of the note in the tree and full load of the note so just avaiting on
+ * fancytree's activate() won't wait for the full load.
+ *
+ * This causes an issue where in some cases you want to do some action after detail is loaded. For this reason
+ * we provide the listeners here which will be triggered after the detail is loaded and if the loaded note
+ * is the one registered in the listener.
+ */
+function addDetailLoadedListener(noteId, callback) {
+    detailLoadedListeners.push({ noteId, callback });
+}
+
+function fireDetailLoaded() {
+    for (const {noteId, callback} of detailLoadedListeners) {
+        if (noteId === currentNote.noteId) {
+            callback();
+        }
+    }
+
+    // all the listeners are one time only
+    detailLoadedListeners = [];
+}
+
 messagingService.subscribeToSyncMessages(syncData => {
     if (syncData.some(sync => sync.entityName === 'notes' && sync.entityId === getCurrentNoteId())) {
         infoService.showMessage('Reloading note because of background changes');
@@ -308,11 +349,12 @@ export default {
     getCurrentNote,
     getCurrentNoteType,
     getCurrentNoteId,
-    newNoteCreated,
     focusOnTitle,
+    focusAndSelectTitle,
     saveNote,
     saveNoteIfChanged,
     noteChanged,
     getCurrentNoteContent,
-    onNoteChange
+    onNoteChange,
+    addDetailLoadedListener
 };

@@ -6,13 +6,16 @@ import protectedSessionHolder from './protected_session_holder.js';
 import infoService from "./info.js";
 
 const $dialog = $("#protected-session-password-dialog");
-const $passwordForm = $("#protected-session-password-form");
-const $password = $("#protected-session-password");
+const $component = $("#protected-session-password-component");
+const $passwordForms = $(".protected-session-password-form");
+const $passwordInputs = $(".protected-session-password");
+const $passwordInModal = $("#protected-session-password-in-modal");
 const $noteDetailWrapper = $("#note-detail-wrapper");
 const $protectButton = $("#protect-button");
 const $unprotectButton = $("#unprotect-button");
 const $enterProtectedSessionButton = $("#enter-protected-session-button");
 const $leaveProtectedSessionButton = $("#leave-protected-session-button");
+const $noteTitle = $("#note-title");
 
 let protectedSessionDeferred = null;
 
@@ -36,12 +39,19 @@ function ensureProtectedSession(requireProtectedSession, modal) {
         // using deferred instead of promise because it allows resolving from outside
         protectedSessionDeferred = dfd;
 
-        if (treeService.getCurrentNode().data.isProtected) {
-            $noteDetailWrapper.hide();
-        }
+        // user shouldn't be able to edit note title
+        $noteTitle.prop("readonly", true);
 
-        $dialog.toggleClass("modalless", !modal);
-        $dialog.modal();
+        if (modal) {
+            if (treeService.getCurrentNode().data.isProtected) {
+                $noteDetailWrapper.hide();
+            }
+
+            $dialog.modal();
+        }
+        else {
+            $component.show();
+        }
     }
     else {
         dfd.resolve(false);
@@ -50,9 +60,8 @@ function ensureProtectedSession(requireProtectedSession, modal) {
     return dfd.promise();
 }
 
-async function setupProtectedSession() {
-    const password = $password.val();
-    $password.val("");
+async function setupProtectedSession(password) {
+    $passwordInputs.val("");
 
     const response = await enterProtectedSessionOnServer(password);
 
@@ -72,7 +81,7 @@ async function setupProtectedSession() {
     await noteDetailService.reload();
 
     if (protectedSessionDeferred !== null) {
-        ensureDialogIsClosed($dialog, $password);
+        ensureDialogIsClosed();
 
         $noteDetailWrapper.show();
 
@@ -93,7 +102,7 @@ function ensureDialogIsClosed() {
     }
     catch (e) {}
 
-    $password.val('');
+    $passwordInputs.val('');
 }
 
 async function enterProtectedSessionOnServer(password) {
@@ -116,7 +125,7 @@ async function protectNoteAndSendToServer() {
 
     treeService.setProtected(note.noteId, note.isProtected);
 
-    noteDetailService.setNoteBackgroundIfProtected(note);console.log(note);
+    noteDetailService.setNoteBackgroundIfProtected(note);
 }
 
 async function unprotectNoteAndSendToServer() {
@@ -157,32 +166,24 @@ async function protectSubtree(noteId, protect) {
     noteDetailService.reload();
 }
 
-$passwordForm.submit(() => {
-    setupProtectedSession();
+$passwordForms.submit(function() { // needs to stay as function
+    const password = $(this).find(".protected-session-password").val();
+
+    setupProtectedSession(password);
 
     return false;
-});
-
-// this doesn't work, event is not triggered :/
-$dialog.on("show.bs.modal", e => function() {
-    if ($(this).hasClass("modalless")) {
-        // return "stolen" focus to tree
-        treeService.getCurrentNode().setFocus();
-    }
-    else {
-        $password.focus();
-    }
 });
 
 $protectButton.click(protectNoteAndSendToServer);
 $unprotectButton.click(unprotectNoteAndSendToServer);
 
-$dialog.on("shown.bs.modal", e => $password.focus());
+$dialog.on("shown.bs.modal", e => $passwordInModal.focus());
 
 export default {
     ensureProtectedSession,
     protectSubtree,
     ensureDialogIsClosed,
     enterProtectedSession,
-    leaveProtectedSession
+    leaveProtectedSession,
+    protectNoteAndSendToServer
 };

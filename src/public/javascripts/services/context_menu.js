@@ -1,9 +1,11 @@
 const $contextMenuContainer = $("#context-menu-container");
 
-function initContextMenu(event, contextMenuItems, selectContextMenuItem) {
+function initContextMenu(event, itemContainer, selectContextMenuItem) {
+    event.stopPropagation();
+
     $contextMenuContainer.empty();
 
-    for (const item of contextMenuItems) {
+    for (const item of itemContainer.getItems()) {
         if (item.title === '----') {
             $contextMenuContainer.append($("<div>").addClass("dropdown-divider"));
         } else {

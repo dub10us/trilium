@@ -23,6 +23,7 @@ function formatTimeWithSeconds(date) {
     return padNum(date.getHours()) + ":" + padNum(date.getMinutes()) + ":" + padNum(date.getSeconds());
 }
 
+// this is producing local time!
 function formatDate(date) {
 //    return padNum(date.getDate()) + ". " + padNum(date.getMonth() + 1) + ". " + date.getFullYear();
     // instead of european format we'll just use ISO as that's pretty unambiguous
@@ -30,6 +31,7 @@ function formatDate(date) {
     return formatDateISO(date);
 }
 
+// this is producing local time!
 function formatDateISO(date) {
     return date.getFullYear() + "-" + padNum(date.getMonth() + 1) + "-" + padNum(date.getDate());
 }
@@ -136,11 +138,38 @@ function randomString(len) {
 }
 
 function bindShortcut(keyboardShortcut, handler) {
-    $(document).bind('keydown', keyboardShortcut, e => {
-        handler();
+    if (isDesktop()) {
+        if (isMac()) {
+            // use CMD (meta) instead of CTRL for all shortcuts
+            keyboardShortcut = keyboardShortcut.replace("ctrl", "meta");
+        }
 
-        e.preventDefault();
-    });
+        $(document).bind('keydown', keyboardShortcut, e => {
+            console.log(e);
+            handler();
+
+            e.preventDefault();
+        });
+    }
+}
+
+function isMobile() {
+    return window.device === "mobile"
+        // window.device is not available in setup
+        || (!window.device && /Mobi/.test(navigator.userAgent));
+}
+
+function isDesktop() {
+    return window.device === "desktop"
+        // window.device is not available in setup
+        || (!window.device && !/Mobi/.test(navigator.userAgent));
+}
+
+function setCookie(name, value) {
+    const date = new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000);
+    const expires = "; expires=" + date.toUTCString();
+
+    document.cookie = name + "=" + (value || "")  + expires + "; path=/";
 }
 
 export default {
@@ -166,5 +195,8 @@ export default {
     download,
     toObject,
     randomString,
-    bindShortcut
+    bindShortcut,
+    isMobile,
+    isDesktop,
+    setCookie
 };

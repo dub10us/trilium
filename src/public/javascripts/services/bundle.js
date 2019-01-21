@@ -9,7 +9,7 @@ async function getAndExecuteBundle(noteId, originEntity = null) {
 }
 
 async function executeBundle(bundle, originEntity) {
-    const apiContext = ScriptContext(bundle.note, bundle.allNotes, originEntity);
+    const apiContext = await ScriptContext(bundle.noteId, bundle.allNoteIds, originEntity);
 
     try {
         return await (function () {
@@ -30,9 +30,13 @@ async function executeStartupBundles() {
 }
 
 async function executeRelationBundles(note, relationName) {
-    const bundlesToRun = await server.get("script/relation/" + note.noteId + "/" + relationName);
+    note.bundleCache = note.bundleCache || {};
 
-    for (const bundle of bundlesToRun) {
+    if (!note.bundleCache[relationName]) {
+        note.bundleCache[relationName] = await server.get("script/relation/" + note.noteId + "/" + relationName);
+    }
+
+    for (const bundle of note.bundleCache[relationName]) {
         await executeBundle(bundle, note);
     }
 }

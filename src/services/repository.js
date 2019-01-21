@@ -47,11 +47,6 @@ async function getBranch(branchId) {
     return await getEntity("SELECT * FROM branches WHERE branchId = ?", [branchId]);
 }
 
-/** @returns {Image|null} */
-async function getImage(imageId) {
-    return await getEntity("SELECT * FROM images WHERE imageId = ?", [imageId]);
-}
-
 /** @returns {Attribute|null} */
 async function getAttribute(attributeId) {
     return await getEntity("SELECT * FROM attributes WHERE attributeId = ?", [attributeId]);
@@ -94,9 +89,10 @@ async function updateEntity(entity) {
 
         const primaryKey = entity[primaryKeyName];
 
-        if (entity.isChanged && (entityName !== 'options' || entity.isSynced)) {
-
-            await syncTableService.addEntitySync(entityName, primaryKey);
+        if (entity.isChanged) {
+            if (entityName !== 'options' || entity.isSynced) {
+                await syncTableService.addEntitySync(entityName, primaryKey);
+            }
 
             if (!cls.isEntityEventsDisabled()) {
                 const eventPayload = {
@@ -121,7 +117,6 @@ module.exports = {
     getEntity,
     getNote,
     getBranch,
-    getImage,
     getAttribute,
     getOption,
     updateEntity,

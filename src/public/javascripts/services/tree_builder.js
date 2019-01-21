@@ -4,13 +4,26 @@ import Branch from "../entities/branch.js";
 import server from "./server.js";
 import treeCache from "./tree_cache.js";
 import messagingService from "./messaging.js";
+import hoistedNoteService from "./hoisted_note.js";
 
 async function prepareTree(noteRows, branchRows, relations) {
     utils.assertArguments(noteRows, branchRows, relations);
 
     treeCache.load(noteRows, branchRows, relations);
 
-    return [ await prepareNode(await treeCache.getBranch('root')) ];
+    const hoistedNoteId = await hoistedNoteService.getHoistedNoteId();
+
+    let hoistedBranch;
+
+    if (hoistedNoteId === 'root') {
+        hoistedBranch = await treeCache.getBranch('root');
+    }
+    else {
+        const hoistedNote = await treeCache.getNote(hoistedNoteId);
+        hoistedBranch = (await hoistedNote.getBranches())[0];
+    }
+
+    return [ await prepareNode(hoistedBranch) ];
 }
 
 async function prepareBranch(note) {
@@ -22,9 +35,14 @@ async function prepareBranch(note) {
     }
 }
 
-function getIcon(note) {
+async function getIcon(note) {
+    const hoistedNoteId = await hoistedNoteService.getHoistedNoteId();
+
     if (note.noteId === 'root') {
         return "jam jam-chevrons-right";
+    }
+    else if (note.noteId === hoistedNoteId) {
+        return "jam jam-arrow-up";
     }
     else if (note.type === 'text') {
         if (note.hasChildren()) {
@@ -57,6 +75,7 @@ function getIcon(note) {
 async function prepareNode(branch) {
     const note = await branch.getNote();
     const title = (branch.prefix ? (branch.prefix + " - ") : "") + note.title;
+    const hoistedNoteId = await hoistedNoteService.getHoistedNoteId();
 
     const node = {
         noteId: note.noteId,
@@ -65,9 +84,9 @@ async function prepareNode(branch) {
         isProtected: note.isProtected,
         title: utils.escapeHtml(title),
         extraClasses: await getExtraClasses(note),
-        icon: getIcon(note),
+        icon: await getIcon(note),
         refKey: note.noteId,
-        expanded: note.type !== 'search' && branch.isExpanded
+        expanded: branch.isExpanded || hoistedNoteId === note.noteId
     };
 
     if (note.hasChildren() || note.type === 'search') {
@@ -135,10 +154,6 @@ async function getExtraClasses(note) {
 
     const extraClasses = [];
 
-    if (note.noteId === 'root') {
-        extraClasses.push("tree-root");
-    }
-
     if (note.isProtected) {
         extraClasses.push("protected");
     }
@@ -153,7 +168,22 @@ async function getExtraClasses(note) {
 
     extraClasses.push(note.type);
 
+    if (note.mime) { // some notes should not have mime type (e.g. render)
+        extraClasses.push(getMimeTypeClass(note.mime));
+    }
+
     return extraClasses.join(" ");
+}
+
+function getMimeTypeClass(mime) {
+    const semicolonIdx = mime.indexOf(';');
+
+    if (semicolonIdx !== -1) {
+        // stripping everything following the semicolon
+        mime = mime.substr(0, semicolonIdx);
+    }
+
+    return 'mime-' + mime.toLowerCase().replace(/[\W_]+/g,"-");
 }
 
 export default {

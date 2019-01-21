@@ -6,7 +6,7 @@ const sourceIdService = require('./source_id');
 const log = require('./log');
 
 async function executeNote(note, originEntity) {
-    if (!note.isJavaScript()) {
+    if (!note.isJavaScript() || note.getScriptEnv() !== 'backend' || !note.isContentAvailable) {
         return;
     }
 
@@ -79,7 +79,24 @@ function getParams(params) {
     }).join(",");
 }
 
+async function getScriptBundleForFrontend(note) {
+    const bundle = await getScriptBundle(note);
+
+    // for frontend we return just noteIds because frontend needs to use its own entity instances
+    bundle.noteId = bundle.note.noteId;
+    delete bundle.note;
+
+    bundle.allNoteIds = bundle.allNotes.map(note => note.noteId);
+    delete bundle.allNotes;
+
+    return bundle;
+}
+
 async function getScriptBundle(note, root = true, scriptEnv = null, includedNoteIds = []) {
+    if (!note.isContentAvailable) {
+        return;
+    }
+
     if (!note.isJavaScript() && !note.isHtml()) {
         return;
     }
@@ -149,14 +166,8 @@ function sanitizeVariableName(str) {
     return str.replace(/[^a-z0-9_]/gim, "");
 }
 
-async function getScriptBundleForNoteId(noteId) {
-    const note = await repository.getNote(noteId);
-    return await getScriptBundle(note);
-}
-
 module.exports = {
     executeNote,
     executeScript,
-    getScriptBundle,
-    getScriptBundleForNoteId
+    getScriptBundleForFrontend
 };

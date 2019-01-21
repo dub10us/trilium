@@ -24,13 +24,13 @@ async function initSyncedOptions(username, password) {
 
     // passwordEncryptionService expects these options to already exist
     await optionService.createOption('encryptedDataKey', '', true);
-    await optionService.createOption('encryptedDataKeyIv', '', true);
 
     await passwordEncryptionService.setDataKey(password, utils.randomSecureToken(16), true);
 }
 
 async function initNotSyncedOptions(initialized, startNotePath = 'root', syncServerHost = '', syncProxy = '') {
     await optionService.createOption('startNotePath', startNotePath, false);
+    await optionService.createOption('hoistedNoteId', 'root', false);
     await optionService.createOption('lastDailyBackupDate', dateUtils.nowDate(), false);
     await optionService.createOption('lastWeeklyBackupDate', dateUtils.nowDate(), false);
     await optionService.createOption('lastMonthlyBackupDate', dateUtils.nowDate(), false);

@@ -1,4 +1,5 @@
 const sql = require('./sql');
+const sqlInit = require('./sql_init');
 const optionService = require('./options');
 const dateUtils = require('./date_utils');
 const syncTableService = require('./sync_table');
@@ -153,7 +154,8 @@ async function createNote(parentNoteId, title, content = "", extraOptions = {}) 
             noteId: note.noteId,
             type: attr.type,
             name: attr.name,
-            value: attr.value
+            value: attr.value,
+            isInheritable: !!attr.isInheritable
         });
     }
 
@@ -358,13 +360,7 @@ async function deleteNote(branch) {
 
     if (notDeletedBranches.length === 0) {
         note.isDeleted = true;
-        // we don't reset content here, that's postponed and done later to give the user
-        // a chance to correct a mistake
         await note.save();
-
-        for (const noteRevision of await note.getRevisions()) {
-            await noteRevision.save();
-        }
 
         for (const childBranch of await note.getChildBranches()) {
             await deleteNote(childBranch);
@@ -403,10 +399,12 @@ async function cleanupDeletedNotes() {
     await sql.execute("UPDATE note_revisions SET content = NULL WHERE note_revisions.content IS NOT NULL AND noteId IN (SELECT noteId FROM notes WHERE isDeleted = 1 AND notes.dateModified <= ?)", [dateUtils.dateStr(cutoffDate)]);
 }
 
-// first cleanup kickoff 5 minutes after startup
-setTimeout(cls.wrap(cleanupDeletedNotes), 5 * 60 * 1000);
+sqlInit.dbReady.then(() => {
+    // first cleanup kickoff 5 minutes after startup
+    setTimeout(cls.wrap(cleanupDeletedNotes), 5 * 60 * 1000);
 
-setInterval(cls.wrap(cleanupDeletedNotes), 4 * 3600 * 1000);
+    setInterval(cls.wrap(cleanupDeletedNotes), 4 * 3600 * 1000);
+});
 
 module.exports = {
     createNewNote,

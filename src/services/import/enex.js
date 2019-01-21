@@ -1,4 +1,5 @@
 const sax = require("sax");
+const fileType = require('file-type');
 const stream = require('stream');
 const xml2js = require('xml2js');
 const log = require("../log");
@@ -54,7 +55,11 @@ async function importEnex(file, parentNote) {
     function extractContent(enNote) {
         // [] thing is workaround for https://github.com/Leonidas-from-XIV/node-xml2js/issues/484
         let content = xmlBuilder.buildObject([enNote]);
-        content = content.substr(3, content.length - 7).trim();
+
+        const endOfFirstTagIndex = content.indexOf('>');
+
+        // strip the <0> and </0> tags
+        content = content.substr(endOfFirstTagIndex + 1, content.length - endOfFirstTagIndex - 5).trim();
 
         // workaround for https://github.com/ckeditor/ckeditor5-list/issues/116
         content = content.replace(/<li>\s+<div>/g, "<li>");
@@ -140,7 +145,7 @@ async function importEnex(file, parentNote) {
                 });
             }
             else if (currentTag === 'mime') {
-                resource.mime = text;
+                resource.mime = text.toLowerCase();
 
                 if (text.startsWith("image/")) {
                     resource.title = "image";
@@ -218,7 +223,26 @@ async function importEnex(file, parentNote) {
 
             const mediaRegex = new RegExp(`<en-media hash="${hash}"[^>]*>`, 'g');
 
-            if (resource.mime.startsWith("image/")) {
+            const fileTypeFromBuffer = fileType(resource.content);
+            if (fileTypeFromBuffer) {
+              // If fileType returns something for buffer, then set the mime given
+              resource.mime = fileTypeFromBuffer.mime;
+            }
+
+            const createResourceNote = async () => {
+              const resourceNote = (await noteService.createNote(noteEntity.noteId, resource.title, resource.content, {
+                attributes: resource.attributes,
+                type: 'file',
+                mime: resource.mime
+              })).note;
+
+              const resourceLink = `<a href="#root/${resourceNote.noteId}">${utils.escapeHtml(resource.title)}</a>`;
+
+              noteEntity.content = noteEntity.content.replace(mediaRegex, resourceLink);
+            }
+
+            if (["image/jpeg", "image/png", "image/gif"].includes(resource.mime)) {
+              try {
                 const originalName = "image." + resource.mime.substr(6);
 
                 const { url } = await imageService.saveImage(resource.content, originalName, noteEntity.noteId);
@@ -232,17 +256,13 @@ async function importEnex(file, parentNote) {
                     // otherwise image would be removed since no note would include it
                     note.content += imageLink;
                 }
+              } catch (e) {
+                log.error("error when saving image from ENEX file: " + e);
+                await createResourceNote();
+              }
             }
             else {
-                const resourceNote = (await noteService.createNote(noteEntity.noteId, resource.title, resource.content, {
-                    attributes: resource.attributes,
-                    type: 'file',
-                    mime: resource.mime
-                })).note;
-
-                const resourceLink = `<a href="#root/${resourceNote.noteId}">${utils.escapeHtml(resource.title)}</a>`;
-
-                noteEntity.content = noteEntity.content.replace(mediaRegex, resourceLink);
+              await createResourceNote();
             }
         }
 

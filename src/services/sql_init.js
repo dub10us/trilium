@@ -155,6 +155,10 @@ async function dbInitialized() {
     await initDbConnection();
 }
 
+dbReady.then(async () => {
+    log.info("DB size: " + await sql.getValue("SELECT page_count * page_size / 1000 as size FROM pragma_page_count(), pragma_page_size()") + " KB");
+});
+
 module.exports = {
     dbReady,
     schemaExists,

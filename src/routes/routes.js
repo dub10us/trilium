@@ -1,6 +1,6 @@
-const indexRoute = require('./index');
-const loginRoute = require('./login');
 const setupRoute = require('./setup');
+const loginRoute = require('./login');
+const indexRoute = require('./index');
 const multer = require('multer')();
 
 // API routes
@@ -151,7 +151,7 @@ function register(app) {
     apiRoute(GET, '/api/recent-changes', recentChangesApiRoute.getRecentChanges);
 
     apiRoute(GET, '/api/options', optionsApiRoute.getOptions);
-    apiRoute(PUT, '/api/options/:name/:value', optionsApiRoute.updateOption);
+    apiRoute(PUT, '/api/options/:name/:value*', optionsApiRoute.updateOption);
     apiRoute(PUT, '/api/options', optionsApiRoute.updateOptions);
 
     apiRoute(POST, '/api/password/change', passwordApiRoute.changePassword);
@@ -169,7 +169,9 @@ function register(app) {
 
     apiRoute(GET, '/api/event-log', eventLogRoute.getEventLog);
 
-    apiRoute(PUT, '/api/recent-notes/:branchId/:notePath', recentNotesRoute.addRecentNote);
+    // * at the end means this will match params containing slash as well
+    // this is a problem with nginx (and possibly other proxies) which translate escaped slash back to the literal slash character
+    apiRoute(PUT, '/api/recent-notes/:branchId/:notePath*', recentNotesRoute.addRecentNote);
     apiRoute(GET, '/api/app-info', appInfoRoute.getAppInfo);
 
     route(GET, '/api/setup/status', [], setupApiRoute.getStatus, apiResultHandler);

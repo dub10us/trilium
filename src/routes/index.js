@@ -9,11 +9,16 @@ const optionService = require('../services/options');
 async function index(req, res) {
     const options = await optionService.getOptionsMap();
 
-    res.render('index', {
+    const view = req.cookies['trilium-device'] === 'mobile' ? 'mobile' : 'desktop';
+
+    res.render(view, {
         theme: options.theme,
         leftPaneMinWidth: parseInt(options.leftPaneMinWidth),
         leftPaneWidthPercent: parseInt(options.leftPaneWidthPercent),
         rightPaneWidthPercent: 100 - parseInt(options.leftPaneWidthPercent),
+        mainFontSize: parseInt(options.mainFontSize),
+        treeFontSize: parseInt(options.treeFontSize),
+        detailFontSize: parseInt(options.detailFontSize),
         sourceId: await sourceIdService.generateSourceId(),
         maxSyncIdAtLoad: await sql.getValue("SELECT MAX(id) FROM sync"),
         instanceName: config.General ? config.General.instanceName : null,

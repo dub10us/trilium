@@ -47,7 +47,18 @@ class Note extends Entity {
         if (this.isProtected && this.noteId) {
             this.isContentAvailable = protectedSessionService.isProtectedSessionAvailable();
 
-            protectedSessionService.decryptNote(this);
+            if (this.isContentAvailable) {
+                protectedSessionService.decryptNote(this);
+            }
+            else {
+                // saving ciphertexts in case we do want to update protected note outside of protected session
+                // (which is allowed)
+                this.titleCipherText = this.title;
+                this.contentCipherText = this.content;
+
+                this.title = "[protected]";
+                this.content = "";
+            }
         }
 
         this.setContent(this.content);
@@ -55,6 +66,9 @@ class Note extends Entity {
 
     setContent(content) {
         this.content = content;
+
+        // if parsing below is not successful then there's no jsonContent as opposed to still having the old unupdated ones
+        delete this.jsonContent;
 
         try {
             this.jsonContent = JSON.parse(this.content);
@@ -370,6 +384,16 @@ class Note extends Entity {
     async getRelationValue(name) { return await this.getAttributeValue(RELATION, name); }
 
     /**
+     * @param {string} name
+     * @returns {Promise<Note>|null} target note of the relation or null (if target is empty or note was not found)
+     */
+    async getRelationTarget(name) {
+        const relation = await this.getRelation(name);
+
+        return relation ? await repository.getNote(relation.value) : null;
+    }
+
+    /**
      * Based on enabled, label is either set or removed.
      *
      * @param {boolean} enabled - toggle On or Off
@@ -424,16 +448,6 @@ class Note extends Entity {
      * @returns {Promise<void>}
      */
     async removeRelation(name, value) { return await this.removeAttribute(RELATION, name, value); }
-
-    /**
-     * @param {string} name
-     * @returns {Promise<Note>|null} target note of the relation or null (if target is empty or note was not found)
-     */
-    async getRelationTarget(name) {
-        const relation = await this.getRelation(name);
-
-        return relation ? await repository.getNote(relation.value) : null;
-    }
 
     /**
      * @return {Promise<string[]>} return list of all descendant noteIds of this note. Returning just noteIds because number of notes can be huge. Includes also this note's noteId
@@ -626,12 +640,21 @@ class Note extends Entity {
     // cannot be static!
     updatePojo(pojo) {
         if (pojo.isProtected) {
-            protectedSessionService.encryptNote(pojo);
+            if (this.isContentAvailable) {
+                protectedSessionService.encryptNote(pojo);
+            }
+            else {
+                // updating protected note outside of protected session means we will keep original ciphertexts
+                pojo.title = pojo.titleCipherText;
+                pojo.content = pojo.contentCipherText;
+            }
         }
 
         delete pojo.jsonContent;
         delete pojo.isContentAvailable;
         delete pojo.__attributeCache;
+        delete pojo.titleCipherText;
+        delete pojo.contentCipherText;
     }
 }
 

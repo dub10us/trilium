@@ -2,6 +2,7 @@ const sql = require('./sql');
 const log = require('./log');
 const eventLogService = require('./event_log');
 const syncTableService = require('./sync_table');
+const eventService = require('./events');
 
 async function updateEntity(sync, entity, sourceId) {
     const {entityName} = sync;
@@ -36,11 +37,20 @@ async function updateEntity(sync, entity, sourceId) {
     else {
         throw new Error(`Unrecognized entity type ${entityName}`);
     }
+
+    // currently making exception for protected notes and note revisions because here
+    // the title and content are not available decrypted as listeners would expect
+    if ((entityName !== 'notes' && entityName !== 'note_revisions') || !entity.isProtected) {
+        await eventService.emit(eventService.ENTITY_SYNCED, {
+            entityName,
+            entity
+        });
+    }
 }
 
 function deserializeNoteContentBuffer(note) {
-    if (note.type === 'file') {
-        note.content = new Buffer(note.content, 'binary');
+    if (note.content !== null && (note.type === 'file' || note.type === 'image')) {
+        note.content = Buffer.from(note.content, 'base64');
     }
 }
 

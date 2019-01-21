@@ -1,4 +1,4 @@
-FROM node:10.14.0-alpine
+FROM node:10.15.0-alpine
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -17,6 +17,7 @@ RUN set -x \
         libtool \
         make \
         nasm \
+        libpng-dev \
     && npm install --production \
     && apk del .build-dependencies
 

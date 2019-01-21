@@ -1,7 +1,6 @@
 "use strict";
 
 const log = require('./log');
-const rp = require('request-promise');
 const sql = require('./sql');
 const sqlInit = require('./sql_init');
 const optionService = require('./options');
@@ -14,6 +13,7 @@ const appInfo = require('./app_info');
 const syncOptions = require('./sync_options');
 const syncMutexService = require('./sync_mutex');
 const cls = require('./cls');
+const request = require('./request');
 
 let proxyToggle = true;
 
@@ -49,7 +49,7 @@ async function sync() {
     catch (e) {
         proxyToggle = !proxyToggle;
 
-        if (e.message.indexOf('ECONNREFUSED') !== -1) {
+        if (e.message && e.message.indexOf('ECONNREFUSED') !== -1) {
             log.info("No connection to sync server.");
 
             return {
@@ -84,7 +84,7 @@ async function doLogin() {
     const documentSecret = await optionService.getOption('documentSecret');
     const hash = utils.hmac(documentSecret, timestamp);
 
-    const syncContext = { cookieJar: rp.jar() };
+    const syncContext = { cookieJar: {} };
 
     const resp = await syncRequest(syncContext, 'POST', '/api/login/sync', {
         timestamp: timestamp,
@@ -98,6 +98,16 @@ async function doLogin() {
 
     syncContext.sourceId = resp.sourceId;
 
+    const lastSyncedPull = await getLastSyncedPull();
+
+    // this is important in a scenario where we setup the sync by manually copying the document
+    // lastSyncedPull then could be pretty off for the newly cloned client
+    if (lastSyncedPull > resp.maxSyncId) {
+        log.info(`Lowering last synced pull from ${lastSyncedPull} to ${resp.maxSyncId}`);
+
+        await setLastSyncedPull(resp.maxSyncId);
+    }
+
     return syncContext;
 }
 
@@ -110,6 +120,10 @@ async function pullSync(syncContext) {
 
         const resp = await syncRequest(syncContext, 'GET', changesUri);
         stats.outstandingPulls = resp.maxSyncId - lastSyncedPull;
+
+        if (stats.outstandingPulls < 0) {
+            stats.outstandingPulls = 0;
+        }
 
         const rows = resp.syncs;
 
@@ -212,30 +226,15 @@ async function checkContentHash(syncContext) {
     await contentHashService.checkContentHashes(resp.hashes);
 }
 
-async function syncRequest(syncContext, method, uri, body) {
-    const fullUri = await syncOptions.getSyncServerHost() + uri;
-
-    try {
-        const options = {
-            method: method,
-            uri: fullUri,
-            jar: syncContext.cookieJar,
-            json: true,
-            body: body,
-            timeout: await syncOptions.getSyncTimeout()
-        };
-
-        const syncProxy = await syncOptions.getSyncProxy();
-
-        if (syncProxy && proxyToggle) {
-            options.proxy = syncProxy;
-        }
-
-        return await rp(options);
-    }
-    catch (e) {
-        throw new Error(`Request to ${method} ${fullUri} failed, error: ${e.message}`);
-    }
+async function syncRequest(syncContext, method, requestPath, body) {
+    return await request.exec({
+        method,
+        url: await syncOptions.getSyncServerHost() + requestPath,
+        cookieJar: syncContext.cookieJar,
+        timeout: await syncOptions.getSyncTimeout(),
+        body,
+        proxy: proxyToggle ? await syncOptions.getSyncProxy() : null
+    });
 }
 
 const primaryKeys = {
@@ -262,11 +261,11 @@ async function getEntityRow(entityName, entityId) {
 
         const entity = await sql.getRow(`SELECT * FROM ${entityName} WHERE ${primaryKey} = ?`, [entityId]);
 
-        if (entityName === 'notes' && entity.type === 'file') {
-            entity.content = entity.content.toString("binary");
-        }
-        else if (entityName === 'images') {
-            entity.data = entity.data.toString('base64');
+        if (entityName === 'notes'
+            && entity.content !== null
+            && (entity.type === 'file' || entity.type === 'image')) {
+
+            entity.content = entity.content.toString("base64");
         }
 
         return entity;
